@@ -4,14 +4,28 @@ import { useAuth } from '../contexts/AuthContext';
 
 export interface AssetFile {
   id: string;
-  asset_id: string;
-  file_name: string;
-  file_type: string;
-  file_size: number;
+  assetId: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  filePath: string;
+  uploadedById: string;
+  uploadedAt: string;
+  uploadedBy?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  previewUrl?: string;
+  // Legacy fields for backward compatibility
+  asset_id?: string;
+  file_name?: string;
+  file_type?: string;
+  file_size?: number;
   file_path?: string;
-  file_data?: string; // Base64 encoded (legacy)
-  uploaded_by: string;
-  uploaded_at: string;
+  file_data?: string;
+  uploaded_by?: string;
+  uploaded_at?: string;
 }
 
 export function useFiles(assetId: string) {
@@ -23,7 +37,9 @@ export function useFiles(assetId: string) {
   const fetchFiles = useCallback(async () => {
     try {
       setLoading(true);
+      console.log('Fetching files for asset:', assetId);
       const results = await filesApi.getAssetFiles(assetId);
+      console.log('Files fetched:', results);
       setFiles(results || []);
       setError(null);
     } catch (err) {
@@ -48,9 +64,12 @@ export function useFiles(assetId: string) {
     }
 
     try {
-      await filesApi.upload(file, assetId);
+      console.log('Uploading file:', file.name, 'for asset:', assetId);
+      const result = await filesApi.upload(file, assetId);
+      console.log('Upload successful:', result);
       await fetchFiles();
     } catch (err) {
+      console.error('Upload failed:', err);
       throw err;
     }
   };
@@ -72,7 +91,7 @@ export function useFiles(assetId: string) {
       if (file.file_data) {
         const link = document.createElement('a');
         link.href = file.file_data;
-        link.download = file.file_name;
+        link.download = file.file_name || file.fileName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -82,7 +101,7 @@ export function useFiles(assetId: string) {
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = file.file_name;
+        link.download = file.file_name || file.fileName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

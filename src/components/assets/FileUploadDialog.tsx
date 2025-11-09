@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 import { Upload, X, File, Image as ImageIcon, FileText, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { useFiles } from '../../hooks/useFiles';
@@ -11,16 +13,22 @@ interface FileUploadDialogProps {
   assetName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onUploadComplete?: () => void;
 }
 
-export function FileUploadDialog({ assetId, assetName, open, onOpenChange }: FileUploadDialogProps) {
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+interface FileWithName {
+  file: File;
+  customName: string;
+}
+
+export function FileUploadDialog({ assetId, assetName, open, onOpenChange, onUploadComplete }: FileUploadDialogProps) {
+  const [selectedFiles, setSelectedFiles] = useState<FileWithName[]>([]);
   const [uploading, setUploading] = useState(false);
   const { uploadFile, refetch } = useFiles(assetId);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
-    const validFiles: File[] = [];
+    const validFiles: FileWithName[] = [];
     const errors: string[] = [];
 
     files.forEach(file => {
@@ -28,7 +36,10 @@ export function FileUploadDialog({ assetId, assetName, open, onOpenChange }: Fil
       if (file.size > 5 * 1024 * 1024) {
         errors.push(`${file.name} exceeds 5MB limit`);
       } else {
-        validFiles.push(file);
+        validFiles.push({
+          file,
+          customName: file.name // Default to original filename
+        });
       }
     });
 
@@ -46,6 +57,14 @@ export function FileUploadDialog({ assetId, assetName, open, onOpenChange }: Fil
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  const updateFileName = (index: number, newName: string) => {
+    setSelectedFiles(prev => 
+      prev.map((item, i) => 
+        i === index ? { ...item, customName: newName } : item
+      )
+    );
+  };
+
   const handleUpload = async () => {
     if (selectedFiles.length === 0) {
       toast.error('Please select at least one file');
@@ -56,14 +75,16 @@ export function FileUploadDialog({ assetId, assetName, open, onOpenChange }: Fil
     let successCount = 0;
     let failCount = 0;
 
-    for (const file of selectedFiles) {
+    for (const fileItem of selectedFiles) {
       try {
-        await uploadFile(file);
+        // Just upload the original file for now
+        // TODO: Implement server-side file renaming
+        await uploadFile(fileItem.file);
         successCount++;
       } catch (error) {
         console.error('Error uploading file:', error);
         failCount++;
-        toast.error(`Failed to upload ${file.name}`);
+        toast.error(`Failed to upload ${fileItem.customName}`);
       }
     }
 
@@ -73,6 +94,7 @@ export function FileUploadDialog({ assetId, assetName, open, onOpenChange }: Fil
       toast.success(`Successfully uploaded ${successCount} file(s)`);
       setSelectedFiles([]);
       refetch();
+      onUploadComplete?.(); // Notify parent component to refresh
       onOpenChange(false);
     }
 
@@ -140,28 +162,47 @@ export function FileUploadDialog({ assetId, assetName, open, onOpenChange }: Fil
 
           {/* Selected files list */}
           {selectedFiles.length > 0 && (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              <p className="text-sm">Selected files ({selectedFiles.length}):</p>
-              {selectedFiles.map((file, index) => (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              <p className="text-sm font-medium">Selected files ({selectedFiles.length}):</p>
+              {selectedFiles.map((fileItem, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-3 p-3 bg-muted rounded-lg"
+                  className="flex flex-col gap-2 p-3 bg-muted rounded-lg"
                 >
-                  {getFileIcon(file.type)}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate">{file.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatFileSize(file.size)}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    {getFileIcon(fileItem.file.type)}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-muted-foreground">
+                        Original: {fileItem.file.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatFileSize(fileItem.file.size)}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeFile(index)}
+                      disabled={uploading}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeFile(index)}
-                    disabled={uploading}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                  
+                  {/* Custom name input */}
+                  <div className="space-y-1">
+                    <Label htmlFor={`file-name-${index}`} className="text-xs">
+                      File Name
+                    </Label>
+                    <Input
+                      id={`file-name-${index}`}
+                      value={fileItem.customName}
+                      onChange={(e) => updateFileName(index, e.target.value)}
+                      placeholder="Enter custom file name"
+                      disabled={uploading}
+                      className="text-sm"
+                    />
+                  </div>
                 </div>
               ))}
             </div>

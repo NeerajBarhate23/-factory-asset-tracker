@@ -10,12 +10,13 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
-import { ArrowLeft, Edit, QrCode, Download, FileText, Image as ImageIcon, Upload, Trash2, Eye } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
+import { ArrowLeft, Edit, QrCode, Download, FileText, Image as ImageIcon, Upload, Trash2, Eye, ZoomIn, ZoomOut, X } from 'lucide-react';
 import { QRCodeDisplay } from './QRCodeDisplay';
 import { FileUploadDialog } from './FileUploadDialog';
 import { useAsset } from '../../hooks/useAssets';
 import { useMovements } from '../../hooks/useMovements';
-import { useFiles } from '../../hooks/useFiles';
+import { useFiles, AssetFile } from '../../hooks/useFiles';
 import { filesApi } from '../../lib/api-client';
 import { useState } from 'react';
 import { toast } from 'sonner@2.0.3';
@@ -28,8 +29,35 @@ interface AssetDetailProps {
 export function AssetDetail({ assetId, onBack }: AssetDetailProps) {
   const { asset, loading, error } = useAsset(assetId);
   const { movements } = useMovements({ assetId });
-  const { files, loading: filesLoading, downloadFile, deleteFile } = useFiles(assetId);
+  const { files, loading: filesLoading, downloadFile, deleteFile, refetch: refetchFiles } = useFiles(assetId);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [previewFile, setPreviewFile] = useState<AssetFile | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(100);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // Load preview when file is selected
+  const handlePreview = async (file: AssetFile) => {
+    setPreviewFile(file);
+    setPreviewZoom(100);
+    
+    try {
+      const blob = await filesApi.preview(file.id);
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+    } catch (error) {
+      console.error('Failed to load preview:', error);
+      toast.error('Failed to load preview');
+    }
+  };
+
+  // Cleanup preview URL when dialog closes
+  const closePreview = () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+    setPreviewFile(null);
+  };
 
   if (loading) {
     return (
@@ -265,19 +293,42 @@ export function AssetDetail({ assetId, onBack }: AssetDetailProps) {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {files.map((file) => {
-                  const isImage = file.file_type?.startsWith('image/') || false;
-                  const isPdf = file.file_type?.includes('pdf') || false;
+                  const fileType = file.fileType || file.file_type || '';
+                  const fileName = file.fileName || file.file_name || 'Unknown';
+                  const fileSize = file.fileSize || file.file_size || 0;
+                  const uploadedAt = file.uploadedAt || file.uploaded_at || '';
+                  const isImage = fileType.startsWith('image/');
+                  const isPdf = fileType.includes('pdf');
                   const previewUrl = filesApi.getPreviewUrl(file.id);
                   
                   return (
-                    <Card key={file.id} className="p-4">
+                    <Card key={file.id} className="p-4 relative">
                       <div className="flex flex-col gap-3">
+                        {/* Delete button in top-right corner */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute top-2 right-2 h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
+                          onClick={async () => {
+                            if (confirm('Are you sure you want to delete this file?')) {
+                              try {
+                                await deleteFile(file.id);
+                                toast.success('File deleted successfully');
+                              } catch (error) {
+                                toast.error('Failed to delete file');
+                              }
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+
                         {/* File preview/icon */}
                         <div className="w-full h-32 bg-muted rounded-lg flex items-center justify-center overflow-hidden">
                           {isImage ? (
                             <img 
                               src={previewUrl} 
-                              alt={file.file_name}
+                              alt={fileName}
                               className="w-full h-full object-cover"
                               onError={(e) => {
                                 // Fallback to icon if image fails to load
@@ -297,15 +348,22 @@ export function AssetDetail({ assetId, onBack }: AssetDetailProps) {
 
                         {/* File info */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm truncate" title={file.file_name}>
-                            {file.file_name}
+                          <p className="text-sm font-medium truncate" title={fileName}>
+                            {fileName}
                           </p>
-                          <p className="text-xs text-muted-foreground">
-                            {(file.file_size / 1024).toFixed(1)} KB
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(file.uploaded_at).toLocaleDateString()}
-                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-xs text-muted-foreground">
+                              {(fileSize / 1024).toFixed(1)} KB
+                            </p>
+                            <span className="text-xs text-muted-foreground">•</span>
+                            <p className="text-xs text-muted-foreground">
+                              {uploadedAt ? new Date(uploadedAt).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              }) : 'Unknown date'}
+                            </p>
+                          </div>
                         </div>
 
                         {/* Actions */}
@@ -314,14 +372,7 @@ export function AssetDetail({ assetId, onBack }: AssetDetailProps) {
                             variant="outline"
                             size="sm"
                             className="flex-1"
-                            onClick={async () => {
-                              try {
-                                // Open preview in new tab
-                                window.open(previewUrl, '_blank');
-                              } catch (error) {
-                                toast.error('Failed to preview file');
-                              }
-                            }}
+                            onClick={() => handlePreview(file)}
                           >
                             <Eye className="h-3 w-3 mr-1" />
                             Preview
@@ -334,22 +385,6 @@ export function AssetDetail({ assetId, onBack }: AssetDetailProps) {
                           >
                             <Download className="h-3 w-3 mr-1" />
                             Download
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              if (confirm('Are you sure you want to delete this file?')) {
-                                try {
-                                  await deleteFile(file.id);
-                                  toast.success('File deleted successfully');
-                                } catch (error) {
-                                  toast.error('Failed to delete file');
-                                }
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
                       </div>
@@ -369,8 +404,102 @@ export function AssetDetail({ assetId, onBack }: AssetDetailProps) {
           assetName={asset.name}
           open={uploadDialogOpen}
           onOpenChange={setUploadDialogOpen}
+          onUploadComplete={refetchFiles}
         />
       )}
+
+      {/* File Preview Dialog */}
+      <Dialog open={!!previewFile} onOpenChange={(open) => !open && closePreview()}>
+        <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>
+                  {previewFile?.fileName || previewFile?.file_name || 'File Preview'}
+                </DialogTitle>
+                <DialogDescription>
+                  {previewFile && `${((previewFile.fileSize || previewFile.file_size || 0) / 1024).toFixed(1)} KB`}
+                </DialogDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPreviewZoom(Math.max(50, previewZoom - 10))}
+                  disabled={previewZoom <= 50}
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-muted-foreground min-w-[60px] text-center">
+                  {previewZoom}%
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPreviewZoom(Math.min(200, previewZoom + 10))}
+                  disabled={previewZoom >= 200}
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPreviewZoom(100)}
+                >
+                  Reset
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-auto bg-muted rounded-lg p-4">
+            {previewFile && previewUrl ? (
+              <div className="flex items-center justify-center min-h-full">
+                {(previewFile.fileType || previewFile.file_type || '').startsWith('image/') ? (
+                  <img
+                    src={previewUrl}
+                    alt={previewFile.fileName || previewFile.file_name}
+                    style={{ 
+                      width: `${previewZoom}%`,
+                      maxWidth: 'none',
+                      height: 'auto'
+                    }}
+                    className="object-contain"
+                  />
+                ) : (previewFile.fileType || previewFile.file_type || '').includes('pdf') ? (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <embed
+                      src={previewUrl}
+                      type="application/pdf"
+                      className="w-full h-full min-h-[700px]"
+                      style={{ 
+                        transform: `scale(${previewZoom / 100})`,
+                        transformOrigin: 'top center',
+                        width: `${10000 / previewZoom}%`,
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-muted-foreground mb-4">
+                      Preview not available for this file type
+                    </p>
+                    <Button onClick={() => previewFile && downloadFile(previewFile)}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Download File
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center min-h-full">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -16,20 +16,26 @@ const storage = multer.diskStorage({
   },
 });
 
-// File filter - accept only images and PDFs
+// File filter - accept images, PDFs, and documents
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedTypes = [
     'image/jpeg',
     'image/jpg',
     'image/png',
     'image/gif',
+    'image/webp',
     'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+    'text/plain',
   ];
 
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and PDF files are allowed.'));
+    cb(new Error(`Invalid file type: ${file.mimetype}. Only images, PDFs, and documents are allowed.`));
   }
 };
 
