@@ -33,8 +33,8 @@ export function QRCodeDisplay({
       let qrData: string;
       if (mode === 'url') {
         // Create a URL that points to this asset detail page
-        const baseUrl = window.location.origin + window.location.pathname;
-        qrData = `${baseUrl}?asset=${assetUid}`;
+        const baseUrl = window.location.origin;
+        qrData = `${baseUrl}/?asset=${assetUid}`;
       } else {
         // Just the asset UID (legacy mode)
         qrData = `ASSET:${assetUid}`;
