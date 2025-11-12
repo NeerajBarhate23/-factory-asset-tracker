@@ -41,9 +41,9 @@ export function LoginForm() {
   // Quick login with demo accounts
   const handleDemoLogin = (role: string) => {
     const demoAccounts: Record<string, { email: string; password: string }> = {
-      admin: { email: 'admin@factory.com', password: 'admin123' },
-      shop: { email: 'shop@factory.com', password: 'shop123' },
-      operator: { email: 'operator@factory.com', password: 'operator123' },
+      admin: { email: 'admin@factory.com', password: 'password123' },
+      shop: { email: 'shop@factory.com', password: 'password123' },
+      operator: { email: 'operator@factory.com', password: 'password123' },
     };
 
     const account = demoAccounts[role];
@@ -148,7 +148,7 @@ export function LoginForm() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground text-center mt-3">
-              Default passwords: admin123, shop123, operator123
+              Default password: password123
             </p>
           </div>
         </CardContent>
